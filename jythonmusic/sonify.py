@@ -7,7 +7,7 @@
 
 import re
 
-from jythonmusic.library.music import *
+from library.music import *
 
 # CONTROLLER CONSTANTS -------------------------------------------------------
 
