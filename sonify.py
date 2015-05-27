@@ -7,7 +7,7 @@
 
 import re
 
-# from library.music import *
+from library.music import *
 
 # Triggers / Joysticks
 trigger_left = LT = "bLeftTrigger"
@@ -30,27 +30,6 @@ button_a = A = "0x1000"
 button_b = B = "0x2000"
 button_x = X = "0x4000"
 button_y = Y = "0x8000"
-
-# instruments = [
-#     Part(ACOUSTIC_BASS, 0),
-#     Part(STRING_ENSEMBLE2, 1),
-#     Part(ORCHESTRA_HIT, 2),
-#     Part(OBOE, 3),
-#     Part(TIMPANI, 4),
-#     Part(TREMOLO_STRINGS, 5),
-# ]
-
-# Map each button to a list of notes
-note_lists = {
-    RB: [0, 2, 0, 3, 0, 4, 0, 5],
-    LB: [7, 5, 7, 4, 7, 3, 7, 2],
-    A: [5, 4, 3, 2, 4, -2, 1, 0],
-    B: [7, 5, 6, 4, 5, 3, 2, 4],
-    X: [2, 1, 0, 3, 4, 5, 6, 7],
-    Y: [2, 1, 3, 2, 4, 3, 6, 7],
-}
-
-# ROOT = C4
 
 def parse_time(time_string):
     # TODO fix this once we know the time format
@@ -76,17 +55,26 @@ def parse_controller_input(fname):
 
     def get_first_match(match_obj):
         """ Safely retrieve the first match. """
-        return match_obj.group(1) if match_obj else None
+        try:
+            return match_obj.group(1)
+        except AttributeError or IndexError:
+            return None
+
+    def intify(nonner):
+        try:
+            return int(nonner)
+        except ValueError or TypeError:
+            return 0
 
     # Read in the file and split it into sample chunks
     input_ = open(fname, "r")
     split_samples = filter(None, input_.read().split(delimiter))
 
     input_samples = []
-    for raw_sample in split_samples:
+    for i, raw_sample in enumerate(split_samples):
         def find_match(label, match_group=catchall):
             return get_first_match(re.search(base_pattern % (label, match_group),
-                                             raw_sample))
+                                              raw_sample))
 
         sample = {}
         # extract all the data and dump it into a dictionary
@@ -95,26 +83,50 @@ def parse_controller_input(fname):
 
         sample['time'] = parse_time(raw_time)
         sample['buttons'] = filter(None, raw_buttons.split(",")) if raw_buttons else None
-        sample[LT] = int(find_match(LT))
-        sample[RT] = int(find_match(RT))
-        sample[LA] = (int(find_match(LAX)),
-                      int(find_match(LAY)))
-        sample[RA] = (int(find_match(RAX)),
-                      int(find_match(RAY)))
+        sample[LT] = intify(find_match(LT))
+        sample[RT] = intify(find_match(RT))
+        sample[LA] = (intify(find_match(LAX)),
+                      intify(find_match(LAY)))
+        sample[RA] = (intify(find_match(RAX)),
+                      intify(find_match(RAY)))
         input_samples.append(sample)
 
     input_.close()
     return input_samples
 
 def compose_from_controller(input_dict):
+    """ Composes a musical score from the list of samples
+
+    """
+    instruments = [
+        Part(ACOUSTIC_BASS, 0),
+        Part(STRING_ENSEMBLE2, 1),
+        Part(ORCHESTRA_HIT, 2),
+        Part(OBOE, 3),
+        Part(TIMPANI, 4),
+        Part(TREMOLO_STRINGS, 5),
+    ]
+
+    # Map each button to a list of notes
+    note_lists = {
+        RB: [0, 2, 0, 3, 0, 4, 0, 5],
+        LB: [7, 5, 7, 4, 7, 3, 7, 2],
+        A: [5, 4, 3, 2, 4, -2, 1, 0],
+        B: [7, 5, 6, 4, 5, 3, 2, 4],
+        X: [2, 1, 0, 3, 4, 5, 6, 7],
+        Y: [2, 1, 3, 2, 4, 3, 6, 7],
+    }
+
+    root = C4
+
     bpm = 120
-    # score = Score("Call of Duty Sonified", bpm)
+    score = Score("Call of Duty Sonified", bpm)
 
 
 
 
 def main():
-    parse_controller_input("test_input.txt")
+    samples = parse_controller_input("test_input.txt")
 
 
 
