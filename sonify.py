@@ -20,6 +20,9 @@ ANALOG_STICK_RIGHT_X = RAX = "sThumbRX"
 ANALOG_STICK_RIGHT_Y = RAY = "sThumbRY"
 LA = "sThumbL"
 RA = "sThumbR"
+TRIGGER_RANGE = (0, 255)
+ANALOG_RANGE = (-32768, 32767)
+ANALOG_SQUARED_RANGE = (ANALOG_RANGE[0] * ANALOG_RANGE[1], ANALOG_RANGE[0]**2)
 
 # Buttons
 D_PAD_UP = DPU = "0x0001"
@@ -105,12 +108,20 @@ def parse_controller_input(fname):
     return input_samples
 
 
+def map_value_ranges(value, old_range, new_range):
+    """ Wraps the music library mapValue function to have fewer inputs."""
+    if len(old_range) == len(new_range) == 2:
+        return mapValue(value, old_range[0], old_range[1], new_range[0], new_range[1])
+    else:
+        return value
+
 def compose_from_samples(samples):
     """ Composes a musical score from the list of samples
 
     """
     root_pitch = BASE_ROOT
     duration = BASE_DURATION
+    max_pitch = 127
     bpm = 120
     score = Score("The Sound Game", bpm)
 
@@ -143,7 +154,7 @@ def compose_from_samples(samples):
         new_root = old_root
         steps = dict(zip(d_pad_buttons, [12, -12, -1, 1]))
         for direction in d_buttons:
-            new_root = (new_root + steps.get(direction, 0)) % 127
+            new_root = (new_root + steps.get(direction, 0)) % max_pitch
 
         return new_root
 
@@ -151,12 +162,28 @@ def compose_from_samples(samples):
         """ Use the timestamp of a sample to determine which
             measure to start the triggered phrase on.
         """
-        # TODO: don't we need a start time to figure this out?
+        # TODO: do we need a start time to figure this out?
         return 0
 
     def _shift_to_root(sequence, root=root_pitch):
         """ Shifts all the pitches in the sequence to the given root pitch."""
-        return map(lambda pitch: (pitch + root) % 127, sequence)
+        return map(lambda pitch: (pitch + root) % max_pitch, sequence)
+
+    def _combine_xy(analog_stick):
+        """ Takes a tuple representing the x and y coordinates of an analog
+            stick and merges them into one value for simpler scaling.
+        """
+        return analog_stick[0] * analog_stick[1]
+
+    def _choose_part_for_phrase(left_analog, phrase):
+        """ Maps the input into the range of our instruments to
+            determine which one to add the phrase to.
+        """
+        sq_value = _combine_xy(left_analog)
+        instrument = instruments[map_value_ranges(sq_value,
+                                                  ANALOG_SQUARED_RANGE,
+                                                  (0, len(instruments)-1))]
+        instrument.addPhrase(phrase)
 
     for sample in samples:
         current_phrase_start = _get_measure(sample['time'])
