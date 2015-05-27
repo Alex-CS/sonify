@@ -22,13 +22,19 @@ def controller_event(controlId, value):
 
     #joysticks
     if controlId == 0:
-        sThumbLX = "sThumbLX:"+str(value)+";\n"
+        val = int(round(value*32767,0))
+        sThumbLX = "sThumbLX:"+str(val)+";\n"
     elif controlId == 1:
-        sThumbLY = "sThumbLY:"+str(value)+";\n"
+        val = int(round(value*32767,0))
+        sThumbLY = "sThumbLY:"+str(val)+";\n"
     elif controlId == 2:
-        sThumbRX = "sThumbRX:"+str(value)+";\n"
+        val = int(round(value*32767,0))
+        sThumbRX = "sThumbRX:"+str(val)+";\n"
     elif controlId == 3:
-        sThumbRY = "sThumbRY:"+str(value)+";"
+        val = int(round(value*32767,0))
+        sThumbRY = "sThumbRY:"+str(val)+";"
+
+    #right trigger, left trigger
     elif controlId == 4:
         val = int(round(value*255,0))
         bRightTrigger = "bRightTrigger:"+str(val)+";\n"
