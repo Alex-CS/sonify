@@ -7,7 +7,7 @@
 
 import re
 
-from jythonmusic.library.music import *
+from library.music import *
 
 # CONTROLLER CONSTANTS -------------------------------------------------------
 
@@ -40,7 +40,6 @@ BUTTON_Y = Y = "0x8000"
 # MUSIC_CONSTANTS ------------------------------------------------------------
 BASE_ROOT = C4
 BASE_DURATION = EN
-MAX_MIDI_VALUE = 127
 
 
 def parse_time(time_string):
@@ -122,7 +121,7 @@ def compose_from_samples(samples):
     """
     root_pitch = BASE_ROOT
     duration = BASE_DURATION
-    
+    max_pitch = 127
     bpm = 120
     score = Score("The Sound Game", bpm)
 
@@ -136,7 +135,7 @@ def compose_from_samples(samples):
     ]
 
     # Map each of our fun buttons to a list of notes
-    pitch_sequences = {
+    button_pitch_sequences = {
         RB: [0, 2, 0, 3, 0, 4, 0, 5],
         LB: [7, 5, 7, 4, 7, 3, 7, 2],
         A: [5, 4, 3, 2, 4, -2, 1, 0],
@@ -155,11 +154,10 @@ def compose_from_samples(samples):
         new_root = old_root
         steps = dict(zip(d_pad_buttons, [12, -12, -1, 1]))
         for direction in d_buttons:
-            new_root = (new_root + steps.get(direction, 0)) % MAX_MIDI_VALUE
+            new_root = (new_root + steps.get(direction, 0)) % max_pitch
 
         return new_root
 
-    # FIXME: this function is only a placeholder so far
     def _get_measure(timestamp):
         """ Use the timestamp of a sample to determine which
             measure to start the triggered phrase on.
@@ -169,7 +167,7 @@ def compose_from_samples(samples):
 
     def _shift_to_root(sequence, root=root_pitch):
         """ Shifts all the pitches in the sequence to the given root pitch."""
-        return map(lambda pitch: (pitch + root) % MAX_MIDI_VALUE, sequence)
+        return map(lambda pitch: (pitch + root) % max_pitch, sequence)
 
     def _combine_xy(analog_stick):
         """ Takes a tuple representing the x and y coordinates of an analog
@@ -177,23 +175,11 @@ def compose_from_samples(samples):
         """
         return analog_stick[0] * analog_stick[1]
 
-    def add_notes_helper(phrase, pitches, durations):
-        if not isinstance(durations, list):
-            durations = [durations for i in xrange(len(pitches))]
-        # make sure the lists match in length
-        not_equal_len = cmp(len(pitches), len(durations))
-        if not_equal_len:
-            longer, shorter = (pitches, durations) if not_equal_len > 0 else (durations, pitches)
-            for i in xrange(len(longer) - len(shorter)):
-                shorter.append(shorter[i])
-        phrase.addNoteList(pitches, durations)
-        return phrase
-
-    def _choose_part_for_phrase(analog, phrase):
+    def _choose_part_for_phrase(left_analog, phrase):
         """ Maps the input into the range of our instruments to
             determine which one to add the phrase to.
         """
-        sq_value = _combine_xy(analog)
+        sq_value = _combine_xy(left_analog)
         instrument = instruments[map_value_ranges(sq_value,
                                                   ANALOG_SQUARED_RANGE,
                                                   (0, len(instruments)-1))]
@@ -202,11 +188,9 @@ def compose_from_samples(samples):
     for sample in samples:
         current_phrase_start = _get_measure(sample['time'])
         buttons = sample['buttons']
-        left_analog = sample[LA]
-        right_analog = sample[RA]
         directional_buttons = buttons.intersection(d_pad_buttons)
-        note_buttons = buttons.intersection(pitch_sequences.keys())
-        other_buttons = (buttons.difference(pitch_sequences)
+        note_buttons = buttons.intersection(button_pitch_sequences.keys())
+        other_buttons = (buttons.difference(button_pitch_sequences)
                                 .difference(d_pad_buttons))
 
         # tweak the root
@@ -215,11 +199,7 @@ def compose_from_samples(samples):
 
         # loop through all the note buttons and add a phrase for each
         if note_buttons:
-            for button in note_buttons:
-                sequence = _shift_to_root(pitch_sequences[button])
-                phrase = add_notes_helper(Phrase(current_phrase_start), sequence, duration)
-                _choose_part_for_phrase(left_analog, phrase)
-
+            pass
 
         # TODO: other buttons/interactions
         # ...
