@@ -6,8 +6,9 @@
 # Author: Alex Simonides
 
 import re
+import random
 
-from jythonmusic.library.music import *
+from music import *
 
 # CONTROLLER CONSTANTS -------------------------------------------------------
 
@@ -43,16 +44,10 @@ BASE_DURATION = EN
 MAX_MIDI_VALUE = 127
 
 
-def parse_time(time_string):
-    # TODO fix this once we know the time format
-    return time_string
-
-
-def parse_controller_input(fname):
-    """ Reads a log file and returns a list of dictionary samples
+def parse_controller_output(fname):
+    """ Reads a log file and returns a dictionary of samples (keyed to times)
     that each look something like this:
     {
-        "time": string,
         "buttons": list,
         LT: int,
         RT: int,
@@ -62,9 +57,9 @@ def parse_controller_input(fname):
     """
 
     # RegEx setup
-    base_pattern = r"%s: %s;"
+    base_pattern = r"%s: ?%s;"
     catchall = r"([^; ]+)"
-    delimiter = '\n"$";\n'
+    delimiter = '\n$;\n'
 
     def _get_first_match(match_obj):
         """ Safely retrieve the first match. """
@@ -74,6 +69,7 @@ def parse_controller_input(fname):
             return None
 
     def _intify(nonner):
+        """ Safely turn something into an int."""
         try:
             return int(nonner)
         except ValueError or TypeError:
@@ -83,18 +79,18 @@ def parse_controller_input(fname):
     input_ = open(fname, "r")
     split_samples = filter(None, input_.read().split(delimiter))
 
-    input_samples = []
-    for i, raw_sample in enumerate(split_samples):
+    output_samples = {}
+    for i in range(len(split_samples)):
+        raw_sample = split_samples[i]
         def _find_match(label, match_group=catchall):
             return _get_first_match(re.search(base_pattern % (label, match_group),
                                               raw_sample))
 
-        sample = {}
         # extract all the data and dump it into a dictionary
-        raw_time = _find_match("Time", '"([^"]*)"')
-        raw_buttons = _find_match("wButtons", '\[([^]]+)\]')
 
-        sample['time'] = parse_time(raw_time)
+        time = _intify(_find_match("Time"))
+        sample = output_samples.get(time, {})
+        raw_buttons = _find_match("wButtons", '\[([^]]+)\]')
         sample['buttons'] = set(filter(None, raw_buttons.split(","))
                                 if raw_buttons else [])
         sample[LT] = _intify(_find_match(LT))
@@ -103,10 +99,11 @@ def parse_controller_input(fname):
                       _intify(_find_match(LAY)))
         sample[RA] = (_intify(_find_match(RAX)),
                       _intify(_find_match(RAY)))
-        input_samples.append(sample)
+        output_samples[time] = sample
 
     input_.close()
-    return input_samples
+    print "Parsed samples"
+    return output_samples
 
 
 def map_value_ranges(value, old_range, new_range):
@@ -136,31 +133,17 @@ def compose_from_samples(samples):
     ]
 
     # Map each of our fun buttons to a list of notes
-    pitch_sequences = {
-        RB: [0, 2, 0, 3, 0, 4, 0, 5],
-        LB: [7, 5, 7, 4, 7, 3, 7, 2],
-        A: [5, 4, 3, 2, 4, -2, 1, 0],
-        B: [7, 5, 6, 4, 5, 3, 2, 4],
-        X: [2, 1, 0, 3, 4, 5, 6, 7],
-        Y: [2, 1, 3, 2, 4, 3, 6, 7],
-    }
-
-    d_pad_buttons = [DPU, DPD, DPL, DPR]
-
-    def _handle_d_pad(d_buttons, old_root=root_pitch):
-        """ Change the root_pitch based in the d-pad input
-            up/down - increase/decrease by one octave
-            l/r - increase by one note
-        """
-        new_root = old_root
-        steps = dict(zip(d_pad_buttons, [12, -12, -1, 1]))
-        for direction in d_buttons:
-            new_root = (new_root + steps.get(direction, 0)) % MAX_MIDI_VALUE
-
-        return new_root
+    pitch_sequences = [
+        [0, 2, 0, 3, 0, 4, 0, 5],
+        [7, 5, 7, 4, 7, 3, 7, 2],
+        [5, 4, 3, 2, 4, 0, 1, 0],
+        [7, 5, 6, 4, 5, 3, 2, 4],
+        [2, 1, 0, 3, 4, 5, 6, 7],
+        [2, 1, 3, 2, 4, 3, 6, 7],
+    ]
 
     # FIXME: this function is only a placeholder so far
-    def _get_measure(timestamp):
+    def _get_start(timestamp):
         """ Use the timestamp of a sample to determine which
             measure to start the triggered phrase on.
         """
@@ -199,38 +182,48 @@ def compose_from_samples(samples):
                                                   (0, len(instruments)-1))]
         instrument.addPhrase(phrase)
 
-    for sample in samples:
-        current_phrase_start = _get_measure(sample['time'])
-        buttons = sample['buttons']
+    sample_pairs = sorted(samples.items(), cmp=lambda x,y: cmp(x[0], y[0]))
+    final_time_ms = sample_pairs[len(sample_pairs)-1][0]
+    final_time_mins = final_time_ms / 60000.  # 1 min / 60000 ms
+    beat_count = 2*floor(bpm * final_time_mins)
+
+    beat_samples = [sample_pairs[i][1] for i in
+                         xrange(0, len(sample_pairs), floor(len(sample_pairs) /
+                                                            beat_count))]
+
+    for i in xrange(len(beat_samples)):
+        current_phrase = Phrase(i)
+        sample = beat_samples[i]
+
+        if len(sample["buttons"]) > 0:
+            root_pitch = random.randint(40, 80)
         left_analog = sample[LA]
         right_analog = sample[RA]
-        directional_buttons = buttons.intersection(d_pad_buttons)
-        note_buttons = buttons.intersection(pitch_sequences.keys())
-        other_buttons = (buttons.difference(pitch_sequences)
-                                .difference(d_pad_buttons))
 
-        # tweak the root
-        if directional_buttons:
-            root_pitch = _handle_d_pad(directional_buttons, root_pitch)
+        pitches = _shift_to_root(random.choice(pitch_sequences))
+        durations = [EN for i in xrange(len(pitches))]
+        current_phrase.addNoteList(pitches, durations)
 
-        # loop through all the note buttons and add a phrase for each
-        if note_buttons:
-            for button in note_buttons:
-                sequence = _shift_to_root(pitch_sequences[button])
-                phrase = add_notes_helper(Phrase(current_phrase_start), sequence, duration)
-                _choose_part_for_phrase(left_analog, phrase)
+        # Choose the instrument based on which segment of the circle the l-stick is
+        theta = atan2(left_analog[1], left_analog[0])
+        instrument_index = mapValue(theta, -pi, pi, 0, 5)
+        instrument = instruments[instrument_index]
 
+        instrument.setPan(map_value_ranges(right_analog[0], ANALOG_RANGE, (PAN_LEFT, PAN_RIGHT)))
 
-        # TODO: other buttons/interactions
-        # ...
+        instrument.addPhrase(current_phrase)
+        instruments[instrument_index] = instrument
 
     score.addPartList(instruments)
     return score
 
 
 def main():
-    samples = parse_controller_input("test_input.txt")
+    samples = parse_controller_output("xboxdrv/output.txt")
     score = compose_from_samples(samples)
+    View.sketch(score)
+    Play.midi(score)
+    Write.midi(score, "The_Sound_Game.mid")
 
 
 if __name__ == "__main__":
